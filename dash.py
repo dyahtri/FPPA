@@ -25,7 +25,7 @@ st.title("Dashboard for Random Forest and CART Classification")
 
 # Sidebar for navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Upload Data", "Descriptive Statistics", "Classification Models", "Prediction"])
+page = st.sidebar.radio("Go to", ["Upload Data", "Descriptive Statistics", "Classification Models", "Prediction", "Comparison"])
 
 # Initialize session state for data storage
 if 'train_data' not in st.session_state:
@@ -62,6 +62,7 @@ elif page == "Descriptive Statistics":
         if selected_columns_test:
             st.write("Descriptive Statistics of Testing Data")
             st.write(st.session_state.test_data[selected_columns_test].describe())
+
 
 elif page == "Classification Models":
     st.header("Classification Models")
@@ -154,3 +155,55 @@ elif page == "Prediction":
 
             st.write(f"Prediction: {result} (0: Sah, 1: Penipuan)")
             st.write(f"Prediction Probability: {prediction_proba}")
+
+elif page == "Comparison":
+    st.header("Comparison of Random Forest and CART")
+
+    if not st.session_state.train_data.empty and not st.session_state.test_data.empty:
+        feature_columns = st.multiselect("Select Feature Columns (X)", st.session_state.train_data.columns, key='comparison_features')
+        label_column = st.selectbox("Select Label Column (Y)", st.session_state.train_data.columns, key='comparison_label')
+
+        if feature_columns and label_column:
+            X_train = st.session_state.train_data[feature_columns]
+            y_train = st.session_state.train_data[label_column]
+            X_test = st.session_state.test_data[feature_columns]
+            y_test = st.session_state.test_data[label_column]
+
+            classifiers = {
+                "Random Forest": RandomForestClassifier(),
+                "CART": DecisionTreeClassifier()
+            }
+
+            metrics = []
+            roc_curves = {}
+
+            for name, model in classifiers.items():
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+
+                accuracy = model.score(X_test, y_test)
+                specificity = specificity_score(y_test, y_pred)
+                sensitivity = sensitivity_score(y_test, y_pred)
+                fpr, tpr, _ = roc_curve(y_test, model.predict_proba(X_test)[:, 1])
+                roc_auc = auc(fpr, tpr)
+
+                metrics.append({
+                    "Model": name,
+                    "Accuracy": accuracy,
+                    "Sensitivity": sensitivity,
+                    "Specificity": specificity,
+                    "AUC": roc_auc
+                })
+
+                roc_curves[name] = (fpr, tpr)
+
+            metrics_df = pd.DataFrame(metrics)
+            st.write(metrics_df)
+
+            st.subheader("ROC Curves Comparison")
+            fig = go.Figure()
+            for name, (fpr, tpr) in roc_curves.items():
+                fig.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'{name} ROC Curve'))
+            fig.add_shape(type='line', x0=0, y0=0, x1=1, y1=1, line=dict(dash='dash', color='yellow'))
+            fig.update_layout(xaxis_title='False Positive Rate', yaxis_title='True Positive Rate', title='ROC Curves Comparison')
+            st.plotly_chart(fig)
